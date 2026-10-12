@@ -46,5 +46,3 @@ A secure web application for managing personal login credentials, created for th
 
 1. **Clone the repository and enter the project directory:**
    ```bash
-   git clone [https://github.com/sebasp-9/ics0027.git](https://github.com/sebasp-9/ics0027.git)
-   cd ics0027
