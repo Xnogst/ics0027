@@ -1,48 +1,106 @@
-# ics0027
-# Web-Based Secure Password Manager
+# Zero-Knowledge Password Manager
 
-A secure web application for managing personal login credentials, created for the ICS0027 Web Application Security course[cite: 1].
+ICS0027 Web Application Security: final project (TalTech).
 
----
+A web-based password manager where **encryption happens in the browser**. The server stores only ciphertext, so a stolen database does not expose anyone's passwords. Built with Flask, SQLite and the browser's WebCrypto API.
 
-## Scope and Features
+## Features
 
-### In-Scope Features
-* **User Accounts:** Registration and authentication using an email and a master password[cite: 1].
-* **Vault Operations:** Creating, viewing, editing, and deleting login items containing a title, login name, and password[cite: 1].
-* **Session Management:** Server-side sessions where the derived vault key exists strictly in temporary server memory[cite: 1].
-* **Optional Multi-Factor Authentication:** Two-factor authentication using TOTP authenticator codes[cite: 1].
+- Register and log in with a master password (never sent to the server)
+- Store, edit, delete and copy credentials; built-in random password generator
+- Per-user encrypted vault (AES-256-GCM)
+- Server-side sessions with 15-minute idle timeout, rotation on login and real logout
+- Account lockout after 5 failed logins, with logging of security events
+- Strict Content-Security-Policy and other security headers
 
-### Out-of-Scope Features
-* Folders and sub-categories[cite: 1].
-* Multiple web addresses per item[cite: 1].
-* Password history and credential sharing[cite: 1].
-* Changing the master password[cite: 1].
-* Browser extensions[cite: 1].
-* Account recovery or password reset mechanisms, because the key protecting the vault is derived from the master password and no copy is retained[cite: 1].
+## Architecture
 
----
+```
+Browser (static/app.js)  <--HTTPS/JSON-->  Flask (app.py)  <-->  SQLite (vault.db)
+ key derivation, AES-GCM                   auth, sessions,        users, sessions,
+ encrypt / decrypt, UI                     access control,        credentials
+                                           validation, logging    (ciphertext only)
+```
 
-## Planned Application Routes
+## Cryptographic design
 
-* `POST /register`: Registers a new account with an email and master password[cite: 1].
-* `POST /login`: Authenticates credentials, derives the vault key into memory, and creates a session[cite: 1].
-* `POST /logout`: Terminates the server session and wipes the vault key from memory[cite: 1].
-* `GET /items`: Fetches and displays the decrypted login items for the authenticated owner[cite: 1].
-* `POST /items/new`: Encrypts credentials with AES-256-GCM and saves a new entry[cite: 1].
-* `POST /items/<id>/edit`: Re-encrypts and updates an existing item owned by the user[cite: 1].
-* `POST /items/<id>/delete`: Removes an owned vault item from the database[cite: 1].
-* `POST /mfa/setup`: Sets up optional TOTP multi-factor authentication[cite: 1].
+1. The master password is run through **PBKDF2-SHA256** (600,000 iterations, random 16-byte salt) in the browser to produce a master key.
+2. **HKDF** splits the master key into two independent keys:
+   - **auth key**: sent to the server, which stores only `Argon2id(auth_key)`.
+   - **AES key**: never leaves the browser; non-extractable and held only in memory.
+3. Each credential is encrypted with **AES-256-GCM** using a fresh random 12-byte IV. The server stores `iv` + `ciphertext`.
+4. GCM's authentication tag means a modified ciphertext fails to decrypt.
 
----
+Why two keys: if one key served both purposes, the server would receive what it needs to decrypt the vault.
+Why PBKDF2 in the browser: WebCrypto supports PBKDF2 and HKDF but not Argon2, so Argon2id is applied server-side to the auth key.
 
-## How to Run Locally
+## Security controls (OWASP Top 10:2025)
 
-### Prerequisites
-* Python 3.12[cite: 1].
-* `mkcert` for generating trusted local HTTPS certificates[cite: 1].
+| Risk | Control |
+|---|---|
+| A01 Broken Access Control | `user_id` in every credential query; other users' IDs return 404 |
+| A02 Security Misconfiguration | Debug off, CSP and security headers, `Secure`/`HttpOnly`/`SameSite=Strict` cookie |
+| A03 Supply Chain Failures | Three dependencies, versions pinned with `pip freeze` |
+| A04 Cryptographic Failures | AES-256-GCM, PBKDF2 (600k), Argon2id; no plaintext in the database |
+| A05 Injection | Parameterized SQL, `textContent` instead of `innerHTML`, CSP |
+| A06 Insecure Design | Zero-knowledge design; encryption key never sent to the server |
+| A07 Authentication Failures | Argon2id, lockout, session rotation, idle timeout, fake salt for unknown users |
+| A08 Integrity Failures | GCM authentication, server-side validation, ownership checks, CSRF token |
+| A09 Logging Failures | `security.log` records logins, failures and lockouts, never secrets |
+| A10 Exceptional Conditions | Generic error responses; details only in the server log |
 
-### Setup Steps
+## Project structure
 
-1. **Clone the repository and enter the project directory:**
-   ```bash
+```
+app.py                 Flask backend: routes, sessions, Argon2id, headers, logging
+requirements.txt       Pinned dependencies
+templates/index.html   Single page: login and vault
+static/app.js          All cryptography and UI logic
+static/style.css       Styling (no inline CSS or JS, so the CSP stays strict)
+```
+
+## Setup
+
+Requires Python 3.11+ and Git.
+
+```bash
+git clone https://github.com/Xnogst/ics0027
+cd ics0027
+python -m venv venv
+source venv/bin/activate          # Windows Git Bash: source venv/Scripts/activate
+pip install -r requirements.txt
+```
+
+## Run
+
+```bash
+flask --app app run --cert adhoc
+```
+
+Open https://localhost:5000 and accept the self-signed certificate warning. HTTPS is required because the session cookie is `Secure` and WebCrypto needs a secure context. Do not run with `--debug`.
+
+The first start creates `vault.db`, `security.log` and `.app_secret`. All three are git-ignored and must never be committed.
+
+## Manual security tests
+
+1. **No plaintext stored:** inspect `credentials` in `vault.db`; only base64 `iv` and `ciphertext` appear.
+2. **Unauthenticated access:** `curl -k -i https://localhost:5000/api/credentials` returns 401.
+3. **IDOR:** as user B, `DELETE /api/credentials/<user A's id>` returns 404.
+4. **CSRF:** a POST without the `X-CSRF-Token` header returns 403.
+5. **Lockout:** 5 wrong passwords lock the account; see `security.log`.
+6. **XSS:** an entry named `<img src=x onerror=alert(1)>` is displayed as plain text.
+7. **Headers:** `curl -kI https://localhost:5000/` shows CSP, HSTS and `nosniff`.
+8. **Errors:** `curl -k -i https://localhost:5000/api/credentials/abc` returns a generic JSON error.
+
+## Limitations
+
+- There is no master-password recovery by design: a lost master password means a lost vault.
+- As with any web-based vault, a compromised server could serve malicious JavaScript; the strict CSP and absence of `innerHTML` reduce, but do not remove, this risk.
+- Lockout is per account (it can be abused to lock out a known username); there is no per-IP rate limiting.
+- The development certificate is self-signed; a real deployment needs a trusted certificate and a production server (for example gunicorn or waitress).
+- Not yet implemented: TOTP multi-factor authentication, export/import.
+- The server still sees usernames, entry counts, ciphertext sizes and timestamps.
+
+## Author
+
+Kaan Metin, ICS0027 Web Application Security, TalTech.
