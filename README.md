@@ -103,4 +103,4 @@ The first start creates `vault.db`, `security.log` and `.app_secret`. All three 
 
 ## Author
 
-Kaan Metin, ICS0027 Web Application Security, TalTech.
+Kaan Metin, TalTech.
