@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Password Manager</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><main>
+<h1>Password Manager</h1>
+<p id="msg" role="status"></p>
+<section id="auth">
+  <form id="authForm">
+    <input id="user" placeholder="Username" autocomplete="username" maxlength="32" required>
+    <input id="pw" type="password" placeholder="Master password (min 12 chars)" autocomplete="current-password" required>
+    <button type="submit">Log in</button>
+    <button type="button" id="regBtn">Register</button>
+  </form>
+</section>
+<section id="vault" hidden>
+  <button id="logoutBtn">Lock &amp; log out</button>
+  <form id="entryForm">
+    <input id="site" placeholder="Site" maxlength="100" required>
+    <input id="eu" placeholder="Username" maxlength="100">
+    <input id="ep" placeholder="Password" maxlength="200" required>
+    <input id="notes" placeholder="Notes" maxlength="500">
+    <button type="button" id="genBtn">Generate</button>
+    <button type="submit">Save</button>
+  </form>
+  <ul id="list"></ul>
+</section>
+</main>
+<script src="/static/app.js"></script>
+</body></html>

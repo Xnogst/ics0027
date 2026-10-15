@@ -1,8 +1,5 @@
 venv/
-*.pyc
 __pycache__/
-.env
-instance/
-*.db
-*.pem
-*.key
+vault.db
+security.log
+.app_secret

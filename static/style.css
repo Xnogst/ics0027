@@ -1,0 +1,8 @@
+body{font-family:system-ui,sans-serif;background:#f4f5f7;margin:0}
+main{max-width:640px;margin:2rem auto;padding:1rem}
+[hidden]{display:none!important}
+input{display:block;width:100%;box-sizing:border-box;margin:.4rem 0;padding:.5rem}
+button{margin:.2rem .2rem .2rem 0;padding:.4rem .8rem;cursor:pointer}
+ul{list-style:none;padding:0}
+li{background:#fff;border-radius:6px;padding:.6rem;margin:.5rem 0}
+#msg{min-height:1.2rem;color:#b00020}
