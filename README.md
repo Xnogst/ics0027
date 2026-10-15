@@ -1,4 +1,4 @@
-# Zero-Knowledge Password Manager
+# Manage that Password
 
 ICS0027 Web Application Security: final project (TalTech).
 
