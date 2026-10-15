@@ -1,12 +1,11 @@
 "use strict";
-// All cryptography happens here. The master password and encryption key never leave the browser.
 const ITER = 600000;                                   // must equal KDF_ITER in app.py
 const enc = new TextEncoder(), dec = new TextDecoder();
 const $ = id => document.getElementById(id);
 const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 let encKey = null, csrf = null, editId = null, idleTimer = null;
-const note = t => { $("msg").textContent = t; };
+const note = (t, isSuccess = false) => { $("msg").textContent = t; $("msg").classList.toggle("success", isSuccess); };
 
 async function api(method, url, body) {
   const headers = {"Content-Type": "application/json"};
@@ -17,7 +16,6 @@ async function api(method, url, body) {
   return r;
 }
 
-// master password --PBKDF2--> master key --HKDF--> (auth key for server) + (AES key, never sent)
 async function derive(password, saltB64, iter) {
   const base = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
   const master = await crypto.subtle.deriveBits(
@@ -51,11 +49,11 @@ function genPw(n = 20) {
 function show(loggedIn) { $("auth").hidden = loggedIn; $("vault").hidden = !loggedIn; }
 function lock(msg) {
   encKey = null; csrf = null; editId = null; clearTimeout(idleTimer);
-  $("list").replaceChildren(); show(false); note(msg || "");
+  $("list").replaceChildren(); show(false); note(msg || "", false);
 }
 function resetIdle() {
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(async () => { await api("POST", "/api/logout"); lock("Locked after 15 minutes idle."); }, 15 * 60 * 1000);
+  idleTimer = setTimeout(async () => { await api("POST", "/api/logout"); lock("Locked after 15 minutes idle.", false); }, 15 * 60 * 1000);
 }
 ["click", "keydown"].forEach(ev => document.addEventListener(ev, () => { if (encKey) resetIdle(); }));
 
@@ -63,14 +61,20 @@ function render(row, item) {                                        // textConte
   const li = document.createElement("li");
   const title = document.createElement("strong"); title.textContent = item.site;
   const meta = document.createElement("div"); meta.textContent = item.user || "";
-  const pw = document.createElement("span"); pw.textContent = "••••••••";
+  const content = document.createElement("div");
+  content.className = "li-content";
+  const pw = document.createElement("span"); pw.textContent = "••••••••"; pw.className = "password-display";
   const btn = (label, fn) => { const b = document.createElement("button"); b.textContent = label; b.onclick = fn; return b; };
-  li.append(title, meta, pw,
+  const buttons = document.createElement("div");
+  buttons.className = "li-buttons";
+  buttons.append(
     btn("Show", () => { pw.textContent = pw.textContent === "••••••••" ? item.pw : "••••••••"; }),
     btn("Copy", () => navigator.clipboard.writeText(item.pw)),
     btn("Edit", () => { $("site").value = item.site; $("eu").value = item.user; $("ep").value = item.pw;
                         $("notes").value = item.notes || ""; editId = row.id; }),
     btn("Delete", async () => { await api("DELETE", `/api/credentials/${row.id}`); load(); }));
+  content.append(pw, buttons);
+  li.append(title, meta, content);
   return li;
 }
 
@@ -86,24 +90,24 @@ async function load() {
 
 $("regBtn").onclick = async () => {
   const u = $("user").value.trim(), p = $("pw").value;
-  if (p.length < 12) return note("Master password must be 12+ characters. It cannot be recovered if lost.");
+  if (p.length < 12) return note("Master password must be 12+ characters. It cannot be recovered if lost.", false);
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
   const {authKey} = await derive(p, salt, ITER);
   const r = await api("POST", "/api/register", {username: u, salt, auth_key: authKey});
-  note(r.ok ? "Account created. Now log in." : "Registration failed (invalid input or name unavailable).");
+  note(r.ok ? "Account created. Now log in." : "Registration failed (invalid input or name unavailable).", r.ok);
 };
 
 $("authForm").onsubmit = async e => {
   e.preventDefault();
   const u = $("user").value.trim(), p = $("pw").value;
   const pre = await api("POST", "/api/prelogin", {username: u});
-  if (!pre.ok) return note("Invalid credentials or try again later.");
+  if (!pre.ok) return note("Invalid credentials or try again later.", false);
   const {salt, iter} = await pre.json();
   const {authKey, key} = await derive(p, salt, iter);
   const r = await api("POST", "/api/login", {username: u, auth_key: authKey});
-  if (!r.ok) return note("Invalid credentials or try again later.");
+  if (!r.ok) return note("Invalid credentials or try again later.", false);
   csrf = (await r.json()).csrf; encKey = key; $("pw").value = "";
-  note(""); show(true); await load(); resetIdle();
+  note("", false); show(true); await load(); resetIdle();
 };
 
 $("entryForm").onsubmit = async e => {
@@ -111,8 +115,8 @@ $("entryForm").onsubmit = async e => {
   const item = {site: $("site").value, user: $("eu").value, pw: $("ep").value, notes: $("notes").value};
   const blob = await seal(item);
   const r = editId ? await api("PUT", `/api/credentials/${editId}`, blob) : await api("POST", "/api/credentials", blob);
-  if (!r.ok) return note("Save failed.");
-  editId = null; e.target.reset(); note(""); load();
+  if (!r.ok) return note("Save failed.", false);
+  editId = null; e.target.reset(); note("", false); load();
 };
 $("genBtn").onclick = () => { $("ep").value = genPw(); };
-$("logoutBtn").onclick = async () => { await api("POST", "/api/logout"); lock("Logged out."); };
+$("logoutBtn").onclick = async () => { await api("POST", "/api/logout"); lock("Logged out.", false); };
