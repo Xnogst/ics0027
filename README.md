@@ -10,7 +10,7 @@ A web-based password manager where **encryption happens in the browser**. The se
 - Store, edit, delete and copy credentials; built-in random password generator
 - Per-user encrypted vault (AES-256-GCM)
 - Server-side sessions with 15-minute idle timeout, rotation on login and real logout
-- Account lockout after 5 failed logins, with logging of security events
+- Logging of security events
 - Strict Content-Security-Policy and other security headers
 
 ## Architecture
