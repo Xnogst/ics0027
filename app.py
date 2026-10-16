@@ -90,7 +90,6 @@ def current_session():
     return row
 
 def auth(f):
-    """Every protected route: valid session + CSRF token on state-changing requests."""
     @wraps(f)
     def wrapper(*a, **k):
         s = current_session()
