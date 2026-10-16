@@ -1,5 +1,5 @@
 "use strict";
-const ITER = 600000;                                   // must equal KDF_ITER in app.py
+const ITER = 600000;
 const enc = new TextEncoder(), dec = new TextDecoder();
 const $ = id => document.getElementById(id);
 const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -24,23 +24,23 @@ async function derive(password, saltB64, iter) {
   const p = info => ({name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: enc.encode(info)});
   const authKey = b64(await crypto.subtle.deriveBits(p("auth"), hk, 256));
   const key = await crypto.subtle.deriveKey(p("vault-enc"), hk, {name: "AES-GCM", length: 256},
-                                            false, ["encrypt", "decrypt"]);   // non-extractable
+                                            false, ["encrypt", "decrypt"]);
   return {authKey, key};
 }
 
 async function seal(item) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));            // fresh IV every time
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({name: "AES-GCM", iv}, encKey, enc.encode(JSON.stringify(item)));
   return {iv: b64(iv), ciphertext: b64(ct)};
 }
 async function open(row) {
   const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv: unb64(row.iv)}, encKey, unb64(row.ciphertext));
-  return JSON.parse(dec.decode(pt));                                // throws if tampered (GCM tag)
+  return JSON.parse(dec.decode(pt));
 }
 
 function genPw(n = 20) {
   const cs = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*";
-  const lim = Math.floor(2 ** 32 / cs.length) * cs.length;           // rejection sampling, no bias
+  const lim = Math.floor(2 ** 32 / cs.length) * cs.length;
   let out = "";
   while (out.length < n) { const [x] = crypto.getRandomValues(new Uint32Array(1)); if (x < lim) out += cs[x % cs.length]; }
   return out;
@@ -57,7 +57,7 @@ function resetIdle() {
 }
 ["click", "keydown"].forEach(ev => document.addEventListener(ev, () => { if (encKey) resetIdle(); }));
 
-function render(row, item) {                                        // textContent only: no XSS sink
+function render(row, item) {
   const li = document.createElement("li");
   const title = document.createElement("strong"); title.textContent = item.site;
   const meta = document.createElement("div"); meta.textContent = item.user || "";
