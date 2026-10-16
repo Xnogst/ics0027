@@ -1,4 +1,3 @@
-"""Password manager backend (Flask + SQLite). The server only ever stores ciphertext."""
 import hashlib, hmac, base64, logging, os, re, secrets, sqlite3, time
 from functools import wraps
 from flask import Flask, g, jsonify, render_template, request
@@ -7,13 +6,13 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHashError
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024            # reject oversized bodies
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 DB = os.environ.get("VAULT_DB", "vault.db")
-KDF_ITER = 600_000                                      # must equal ITER in static/app.js
+KDF_ITER = 600_000
 IDLE_SECONDS = 15 * 60
 MAX_FAILS, LOCK_SECONDS = 5, 15 * 60
-ph = PasswordHasher()                                   # Argon2id by default
-DUMMY_HASH = ph.hash("dummy")                           # equalises timing for unknown users
+ph = PasswordHasher()
+DUMMY_HASH = ph.hash("dummy")
 logging.basicConfig(filename="security.log", level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("pm")
@@ -41,7 +40,7 @@ def _secret():
             f.write(secrets.token_bytes(32))
     with open(".app_secret", "rb") as f:
         return f.read()
-SECRET = _secret()                                      # used for fake salts only
+SECRET = _secret()
 
 def db():
     if "db" not in g:
@@ -64,9 +63,8 @@ def b64ok(v, length=None, maxlen=None):
     return (isinstance(v, str) and B64_RE.match(v) is not None
             and (length is None or len(v) == length) and (maxlen is None or len(v) <= maxlen))
 
-h = lambda s: hashlib.sha256(s.encode()).hexdigest()    # sessions are stored hashed
+h = lambda s: hashlib.sha256(s.encode()).hexdigest()
 
-# ---------- sessions (server-side, so rotation, idle expiry and logout are real) ----------
 def new_session(uid):
     tok, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     now = time.time()
@@ -105,7 +103,6 @@ def auth(f):
         return f(*a, **k)
     return wrapper
 
-# ---------- headers and errors ----------
 @app.after_request
 def headers(r):
     r.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; "
@@ -122,10 +119,9 @@ def headers(r):
 def on_error(e):
     if isinstance(e, HTTPException):
         return jsonify(error=e.name), e.code
-    log.exception("unhandled error")                    # details go to the log, never the browser
+    log.exception("unhandled error")
     return jsonify(error="server error"), 500
 
-# ---------- routes ----------
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -139,7 +135,7 @@ def prelogin():
     if row:
         return jsonify(salt=row["kdf_salt"], iter=row["kdf_iter"])
     fake = base64.b64encode(hmac.new(SECRET, u.encode(), "sha256").digest()[:16]).decode()
-    return jsonify(salt=fake, iter=KDF_ITER)            # unknown users look identical
+    return jsonify(salt=fake, iter=KDF_ITER)
 
 @app.post("/api/register")
 def register():
@@ -172,7 +168,7 @@ def login():
         except Exception: pass
         log.warning("login_fail unknown user=%r ip=%s", u, request.remote_addr)
         return fail()
-    if row["locked_until"] > now:                       # same message as a wrong password
+    if row["locked_until"] > now:
         log.warning("login_while_locked user=%r ip=%s", u, request.remote_addr)
         return fail()
     try:
@@ -187,9 +183,9 @@ def login():
         return fail()
     db().execute("UPDATE users SET fails=0, locked_until=0 WHERE id=?", (row["id"],))
     old = request.cookies.get("sid")
-    if old:                                             # drop any pre-login session (anti-fixation)
+    if old:
         db().execute("DELETE FROM sessions WHERE token_hash=?", (h(old),))
-    tok, csrf = new_session(row["id"])                  # brand-new ID after every login
+    tok, csrf = new_session(row["id"])
     resp = jsonify(csrf=csrf)
     resp.set_cookie("sid", tok, httponly=True, secure=True, samesite="Strict", path="/")
     log.info("login_ok user=%r", u)
@@ -232,7 +228,7 @@ def update_cred(cid):
     if not blob_ok(d):
         return jsonify(error="invalid input"), 400
     cur = db().execute("UPDATE credentials SET iv=?, ciphertext=?, updated=? WHERE id=? AND user_id=?",
-                       (d["iv"], d["ciphertext"], time.time(), cid, g.uid))   # ownership in the query
+                       (d["iv"], d["ciphertext"], time.time(), cid, g.uid))
     db().commit()
     return (jsonify(ok=True), 200) if cur.rowcount else (jsonify(error="Not Found"), 404)
 
